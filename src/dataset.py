@@ -47,13 +47,9 @@ class BilingualDataset(Dataset):
         self.seq_len = seq_len
 
         # Store IDs (ints, not tensors)
-        self.sos_id_src = tokenizer_src.token_to_id("[SOS]")
-        self.eos_id_src = tokenizer_src.token_to_id("[EOS]")
-        self.pad_id_src = tokenizer_src.token_to_id("[PAD]")
-
-        self.sos_id_tgt = tokenizer_tgt.token_to_id("[SOS]")
-        self.eos_id_tgt = tokenizer_tgt.token_to_id("[EOS]")
-        self.pad_id_tgt = tokenizer_tgt.token_to_id("[PAD]")
+        self.sos_id = tokenizer_src.token_to_id("[SOS]")
+        self.eos_id = tokenizer_src.token_to_id("[EOS]")
+        self.pad_id = tokenizer_src.token_to_id("[PAD]")
 
     def __len__(self):
         return len(self.ds)
@@ -75,33 +71,33 @@ class BilingualDataset(Dataset):
 
         # Encoder input: [SOS] src [EOS] PAD*
         encoder_input = torch.cat([
-            torch.tensor([self.sos_id_src], dtype=torch.int64),
+            torch.tensor([self.sos_id], dtype=torch.int64),
             torch.tensor(enc_tokens, dtype=torch.int64),
-            torch.tensor([self.eos_id_src], dtype=torch.int64),
-            torch.full((enc_pad,), self.pad_id_src, dtype=torch.int64)
+            torch.tensor([self.eos_id], dtype=torch.int64),
+            torch.full((enc_pad,), self.pad_id, dtype=torch.int64)
         ])
 
         # Decoder input: [SOS] tgt PAD*
         decoder_input = torch.cat([
-            torch.tensor([self.sos_id_tgt], dtype=torch.int64),
+            torch.tensor([self.sos_id], dtype=torch.int64),
             torch.tensor(dec_tokens, dtype=torch.int64),
-            torch.full((dec_pad,), self.pad_id_tgt, dtype=torch.int64)
+            torch.full((dec_pad,), self.pad_id, dtype=torch.int64)
         ])
 
         # Label: tgt [EOS] PAD*
         label = torch.cat([
             torch.tensor(dec_tokens, dtype=torch.int64),
-            torch.tensor([self.eos_id_tgt], dtype=torch.int64),
-            torch.full((dec_pad,), self.pad_id_tgt, dtype=torch.int64)
+            torch.tensor([self.eos_id], dtype=torch.int64),
+            torch.full((dec_pad,), self.pad_id, dtype=torch.int64)
         ])
 
         assert encoder_input.size(0) == self.seq_len
         assert decoder_input.size(0) == self.seq_len
         assert label.size(0) == self.seq_len
 
-        encoder_mask = (encoder_input != self.pad_id_src).unsqueeze(0).unsqueeze(0)
+        encoder_mask = (encoder_input != self.pad_id).unsqueeze(0).unsqueeze(0).int()
         decoder_mask = (
-            (decoder_input != self.pad_id_tgt).unsqueeze(0).unsqueeze(0)
+            (decoder_input != self.pad_id).unsqueeze(0).unsqueeze(0)
             & causal_mask(self.seq_len)
         )
 

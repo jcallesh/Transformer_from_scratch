@@ -31,7 +31,7 @@ def get_or_build_tokenizer(config, ds, lang):
     if not Path.exists(tokenizer_path):
         tokenizer = Tokenizer(WordLevel(unk_token='[UNK]'))
         tokenizer.pre_tokenizer = Whitespace()
-        trainer = WordLevelTrainer(special_tokens=["[UNK]", "[PAD]", "[SOS]","[EOS]"], min_frequency=2)
+        trainer = WordLevelTrainer(special_tokens=["[UNK]", "[PAD]", "[SOS]", "[EOS]"], min_frequency=2)
         tokenizer.train_from_iterator(get_all_sentences(ds, lang), trainer=trainer)
         tokenizer.save(str(tokenizer_path))
     else:
@@ -39,12 +39,12 @@ def get_or_build_tokenizer(config, ds, lang):
 
     return tokenizer 
 
+
 def get_ds(config):
 
     # Load dataset
     # ds_raw = load_dataset('iwslt2017', f"iwslt2017-{config['lang_src']}-{config['lang_tgt']}", split= 'train')
     ds_raw = load_dataset("opus_books", f"{config['lang_src']}-{config['lang_tgt']}", split="train")
-    # ds_raw = load_dataset('opus100', f"{config['lang_src']}-{config['lang_tgt']}", split='train')
     print("Dataset size:", len(ds_raw))
     
     # Build tokenizers
@@ -91,7 +91,7 @@ def get_ds(config):
 
     # Dataloaders
     train_loader = DataLoader(train_ds, batch_size=config['batch_size'], shuffle=True)
-    val_loader   = DataLoader(valid_ds,  batch_size=1)
+    val_loader   = DataLoader(valid_ds,  batch_size=1, shuffle=True)
 
     return train_loader, val_loader, tokenizer_src, tokenizer_tgt
 
@@ -99,6 +99,7 @@ def get_ds(config):
 def get_model(config, vocab_src_len, vocab_tgt_len):
     model = build_transformer(vocab_src_len, vocab_tgt_len, config['seq_len'], config['seq_len'],config['d_model'])
     return model
+
 
 def greedy_decoder(model, source, source_mask, tokenizer_src, tokenizer_tgt, max_len, device):
     sos_idx = tokenizer_tgt.token_to_id("[SOS]")
@@ -108,26 +109,26 @@ def greedy_decoder(model, source, source_mask, tokenizer_src, tokenizer_tgt, max
     encoder_output = model.encode(source, source_mask)
 
     # Start with SOS
-    decoder_input = torch.tensor([[sos_idx]], dtype=torch.long, device=device)
+    decoder_input = torch.empty(1, 1).fill_(sos_idx).type_as(source).to(device)
 
     while True:
         # ---- Correct stop condition (use seq length) ----
-        if decoder_input.size(1) >= max_len:
+        if decoder_input.size(1) == max_len:
             break
 
         # Mask for current length
-        decoder_mask = causal_mask(decoder_input.size(1)).to(device)
+        decoder_mask = causal_mask(decoder_input.size(1)).type_as(source_mask).to(device)
 
         # Decode
         output = model.decode(encoder_output, source_mask, decoder_input, decoder_mask)
 
         # Project and take last token logits
-        prob = model.project(output)[:, -1, :]   # (1, vocab_size)
-        next_word = torch.argmax(prob, dim=-1).item()
-
+        prob = model.project(output[:,-1])
+        # _, next_word = torch.argmax(prob, dim=1)
+        next_word = torch.argmax(prob, dim=1)
         # Append next token
         decoder_input = torch.cat(
-            [decoder_input, torch.tensor([[next_word]], device=device)], dim=1
+            [decoder_input, torch.empty(1, 1).type_as(source).fill_(next_word.item()).to(device)], dim=1
         )
 
         # Stop on EOS
@@ -221,6 +222,7 @@ def train_model(config):
     #           TRAINING LOOP
     # -----------------------------
     for epoch in range(initial_epoch, config['num_epochs']):
+        torch.cuda.empty_cache()
         model.train()
         batch_iterator = tqdm(train_dataloader, desc=f'Training epoch {epoch:02d}')
 
@@ -242,6 +244,8 @@ def train_model(config):
             )
 
             batch_iterator.set_postfix(loss=f"{loss.item():.4f}")
+
+            # log loss
             writer.add_scalar('train_loss', loss.item(), global_step)
             writer.flush()
 
@@ -268,7 +272,7 @@ def train_model(config):
 
 
 if __name__ == '__main__':
-    # warnings.filterwarnings('ignore)
+    # warnings.filterwarnings('ignore')
     config = get_config()
     train_model(config)
 
