@@ -9,13 +9,13 @@ def get_config():
         dict: Dictionary containing configuration values.
     """
     return {
-        'batch_size': 16,
+        'batch_size': 8,
         'num_epochs': 50,
         'lr': 1e-4,
-        'seq_len': 350, #512
-        'd_model': 512, #1024
+        'seq_len': 896, #512
+        'd_model': 1024, #1024
         'lang_src': 'en',
-        'lang_tgt': 'it',
+        'lang_tgt': 'es',
         'model_folder': 'weights',
         'model_filename': 'tmodel_',
         'preload': None,

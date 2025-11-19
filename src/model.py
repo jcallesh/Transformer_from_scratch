@@ -33,7 +33,7 @@ class InputEmbedding(nn.Module):
         return self.embedding(x) * self.scale
 
 
-class PositionalEconding(nn.Module):
+class PositionalEnconding(nn.Module):
     """
     Sinusoidal positional encoding for transformer models (Sec. 3.5 in Vaswani et al., 2017).
 
@@ -508,8 +508,8 @@ def build_transformer(src_vocab_size, tgt_vocab_size, src_seq_len, tgt_seq_len, 
     tgt_embed = InputEmbedding(d_model, tgt_vocab_size)
 
     # create the positional encoding layers
-    src_pos = PositionalEconding(d_model, src_seq_len, dropout)
-    tgt_pos = PositionalEconding(d_model, tgt_seq_len, dropout) #this doesn't have learning parameters so we could use src_pos instead!
+    src_pos = PositionalEnconding(d_model, src_seq_len, dropout)
+    tgt_pos = PositionalEnconding(d_model, tgt_seq_len, dropout) #this doesn't have learning parameters so we could use src_pos instead!
 
     # Create the encoder blocks
     encoder_blocks = []
