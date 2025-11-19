@@ -25,7 +25,7 @@ This project aims to:
 
 ---
 
-## Dataset
+## 📚 Dataset
 
 We use the Opus Books English↔Spanish (EN↔ES) dataset for training and evaluation. This parallel corpus is drawn from open-access literary texts and is well-suited for translation tasks.
 
