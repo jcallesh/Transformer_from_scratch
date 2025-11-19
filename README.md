@@ -27,12 +27,13 @@ This project aims to:
 
 ## Dataset
 
-We use the IWSLT2017 English↔Spanish (EN↔ES) dataset for training and evaluation. Some features from this dataset:
+We use the Opus Books English↔Spanish (EN↔ES) dataset for training and evaluation. This parallel corpus is drawn from open-access literary texts and is well-suited for translation tasks.
 
-- ~200,000 sentence pairs from TED talks
-- Clean and preprocessed
-- Open access
-- Loads in one line via HuggingFace 
+Key features include:
+- Sentence pairs extracted from public domain books
+- Clean and aligned bilingual data
+- Open access via HuggingFace
+- Loads in one line with language pair flexibilit
 
 ---
 
