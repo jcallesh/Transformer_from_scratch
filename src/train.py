@@ -1,3 +1,16 @@
+"""
+===============================================================================
+ Name        : train.py
+ Author(s)   :
+ Version     : 0.1
+ Description : 
+    Training script for the Transformer-based translation model. Handles dataset
+    loading, model initialization, training loop, loss computation, optimizer setup,
+    checkpoint saving, and validation tracking.
+===============================================================================
+
+
+"""
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader, random_split
@@ -20,6 +33,9 @@ from tqdm import tqdm
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
+# -----------------------------
+# Utilities
+# -----------------------------
 def get_all_sentences(ds, lang):
     for item in ds:
         yield item['translation'][lang]
@@ -100,7 +116,9 @@ def get_model(config, vocab_src_len, vocab_tgt_len):
     model = build_transformer(vocab_src_len, vocab_tgt_len, config['seq_len'], config['seq_len'],config['d_model'])
     return model
 
-
+# -----------------------------
+# Greedy decoder
+# -----------------------------
 def greedy_decoder(model, source, source_mask, tokenizer_src, tokenizer_tgt, max_len, device):
     sos_idx = tokenizer_tgt.token_to_id("[SOS]")
     eos_idx = tokenizer_tgt.token_to_id("[EOS]")
@@ -137,7 +155,9 @@ def greedy_decoder(model, source, source_mask, tokenizer_src, tokenizer_tgt, max
 
     return decoder_input.squeeze(0)
 
-
+# -----------------------------
+# Validation step (prints examples)
+# -----------------------------
 def validation_step(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len, device, print_msg, global_step, writer, num_examples = 2):
     model.eval()
     count = 0
@@ -175,7 +195,9 @@ def validation_step(model, validation_ds, tokenizer_src, tokenizer_tgt, max_len,
             if count == num_examples:
                 break
 
-
+# -----------------------------
+# Main training loop
+# -----------------------------
 def train_model(config):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f'Using device {device}')
@@ -196,9 +218,7 @@ def train_model(config):
     initial_epoch = 0
     global_step = 0
 
-    # -----------------------------
     # LOAD CHECKPOINT IF AVAILABLE
-    # -----------------------------
     if config['preload']:
         model_filename = get_weights_file_path(config, config['preload'])
         print(f'Preloading model {model_filename}')
@@ -210,17 +230,13 @@ def train_model(config):
         optimizer.load_state_dict(state['optimizer_state_dict'])
         global_step = state['global_step']
 
-    # -----------------------------
     # LOSS FUNCTION
-    # -----------------------------
     loss_fn = nn.CrossEntropyLoss(
         ignore_index=tokenizer_tgt.token_to_id('[PAD]'),
         label_smoothing=0.1
     ).to(device)
 
-    # -----------------------------
     #           TRAINING LOOP
-    # -----------------------------
     for epoch in range(initial_epoch, config['num_epochs']):
         torch.cuda.empty_cache()
         model.train()
@@ -258,9 +274,7 @@ def train_model(config):
         # run validation at end of epoch
         validation_step(model, val_dataloader, tokenizer_src, tokenizer_tgt, config['seq_len'], device, lambda msg: batch_iterator.write(msg), global_step, writer)
 
-        # -----------------------------
         # SAVE CHECKPOINT EACH EPOCH
-        # -----------------------------
         model_filename = get_weights_file_path(config, f'{epoch:02d}')
         torch.save({
             'epoch': epoch,
@@ -275,28 +289,5 @@ if __name__ == '__main__':
     # warnings.filterwarnings('ignore')
     config = get_config()
     train_model(config)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 

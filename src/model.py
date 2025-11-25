@@ -1,7 +1,24 @@
+"""
+===============================================================================
+ Name        : model.py
+ Author(s)   :
+ Version     : 0.1
+ Description : 
+    Defines the core Transformer architecture for sequence-to-sequence tasks,
+    including encoder, decoder, embedding layers, positional encodings, and
+    output projection. Implements modular components for building and training
+    bilingual translation models.
+===============================================================================
+
+
+"""
 import torch
 import torch.nn as nn
 import math
 
+# --------------------------------------------------------
+# INPUT EMBEDDING
+# --------------------------------------------------------
 class InputEmbedding(nn.Module):
     """
     Embedding layer with scaling for transformer models.
@@ -24,15 +41,15 @@ class InputEmbedding(nn.Module):
     """
     def __init__(self, d_model, vocabulary_size):
         super().__init__()
-        self.d_model    = d_model
-        self.vocab_size = vocabulary_size
-        self.embedding  = nn.Embedding(self.vocab_size, self.d_model)
-        self.scale      = math.sqrt(self.d_model) 
+        self.embedding = nn.Embedding(vocabulary_size, d_model)
+        self.scale = math.sqrt(d_model)
 
     def forward(self, x):
         return self.embedding(x) * self.scale
 
-
+# --------------------------------------------------------
+# POSITIONAL ENCODING
+# --------------------------------------------------------
 class PositionalEnconding(nn.Module):
     """
     Sinusoidal positional encoding for transformer models (Sec. 3.5 in Vaswani et al., 2017).
@@ -57,26 +74,26 @@ class PositionalEnconding(nn.Module):
     """
     def __init__(self, d_model, seq_len, dropout):
         super().__init__()
-        self.d_model = d_model
-        self.seq_len = seq_len
         self.dropout = nn.Dropout(dropout)
 
-        pos_encoding = torch.zeros(self.seq_len, self.d_model)
-        position = torch.arange(0, self.seq_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, self.d_model, 2).float() *
-                             (-math.log(10000.0) / self.d_model))
+        pe = torch.zeros(seq_len, d_model)
+        position = torch.arange(0, seq_len).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2) *
+                             (-math.log(10000.0) / d_model))
 
-        pos_encoding[:, 0::2] = torch.sin(position * div_term)
-        pos_encoding[:, 1::2] = torch.cos(position * div_term)
-        pos_encoding = pos_encoding.unsqueeze(0)  # shape: (1, seq_len, d_model)
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0)
 
-        self.register_buffer('pos_encoding', pos_encoding)
+        self.register_buffer("pos_encoding", pe)
 
     def forward(self, x):
-        x = x + self.pos_encoding[:, :x.size(1), :]#.requires_grad_(False)
+        x = x + self.pos_encoding[:, :x.size(1), :]
         return self.dropout(x)
 
-
+# --------------------------------------------------------
+# LAYER NORM  (correct epsilon usage)
+# -------------------------------------------------------
 class LayerNormalization(nn.Module):
     """Applies layer normalization over the last dimension of the input.
 
@@ -84,7 +101,7 @@ class LayerNormalization(nn.Module):
     deviation, then applies learnable scaling (`alpha`) and bias parameters.
 
     Args:
-        features (int): Size of the last dimension to normalize.
+        d_model (int): Size of the last dimension to normalize.
         eps (float, optional): Small constant added to the denominator for
             numerical stability. Default is 1e-6.
 
@@ -100,18 +117,21 @@ class LayerNormalization(nn.Module):
                 torch.Tensor: Normalized tensor of the same shape as input.
     """
 
-    def __init__(self, features, eps=1e-6):
+    def __init__(self, d_model, eps=1e-6):
         super().__init__()
         self.eps   = eps
-        self.alpha = nn.Parameter(torch.ones(features))
-        self.bias  = nn.Parameter(torch.zeros(features))
+        self.alpha = nn.Parameter(torch.ones(d_model))
+        self.bias  = nn.Parameter(torch.zeros(d_model))
 
     def forward(self, x):
-        mu    = x.mean(dim=-1, keepdim=True)
-        sigma = x.std(dim=-1, keepdim=True)
-        return self.alpha * (x - mu) / (sigma + self.eps) + self.bias
+        mu = x.mean(dim=-1, keepdim=True)
+        var = x.var(dim=-1, unbiased=False, keepdim=True)
+        denom = torch.sqrt(var + self.eps)
+        return self.alpha * (x - mu) / denom + self.bias
 
-
+# --------------------------------------------------------
+# FEED FORWARD BLOCK
+# --------------------------------------------------------
 class FeedForwardBlock(nn.Module):
     """Two-layer feedforward block with ReLU and dropout.
 
@@ -133,7 +153,7 @@ class FeedForwardBlock(nn.Module):
     def __init__(self, d_model, d_ff, dropout):
         super().__init__()
         self.linear_1 = nn.Linear(d_model, d_ff)
-        self.dropout  = nn.Dropout(dropout)   # fixed typo
+        self.dropout  = nn.Dropout(dropout)
         self.linear_2 = nn.Linear(d_ff, d_model)
 
     def forward(self, x):
@@ -142,7 +162,9 @@ class FeedForwardBlock(nn.Module):
         x = self.linear_2(x)
         return x
 
-
+# --------------------------------------------------------
+# MULTIHEAD ATTENTION
+# --------------------------------------------------------
 class MultiHeadAttentionBlock(nn.Module):
     """Multi-head attention block for transformer models.
 
@@ -169,18 +191,18 @@ class MultiHeadAttentionBlock(nn.Module):
     """
     def __init__(self, d_model, h, dropout):
         super().__init__()
-        self.d_model = d_model
+        assert d_model % h == 0, "model dimension (d_model) must be divisible by number of heads (h)"
+
         self.h       = h
-        self.dropout = nn.Dropout(dropout)   # fixed typo
-
-        assert self.d_model % self.h == 0, "d_model is not divisible by h"
-
         self.d_k = d_model // h
-        self.W_q = nn.Linear(self.d_model, self.d_model, bias=False) # Wq
-        self.W_k = nn.Linear(self.d_model, self.d_model, bias=False) # Wk
-        self.W_v = nn.Linear(self.d_model, self.d_model, bias=False) # Wv
-        self.W_o = nn.Linear(self.d_model, self.d_model, bias=False) # Wo
-    
+
+        self.W_q = nn.Linear(d_model, d_model, bias=False) # Wq
+        self.W_k = nn.Linear(d_model, d_model, bias=False) # Wk
+        self.W_v = nn.Linear(d_model, d_model, bias=False) # Wv
+        self.W_o = nn.Linear(d_model, d_model, bias=False) # Wo
+
+        self.dropout = nn.Dropout(dropout)
+
     @staticmethod
     def attention(query, key, value, mask, dropout: nn.Dropout):
         d_k = query.shape[-1]
@@ -205,13 +227,15 @@ class MultiHeadAttentionBlock(nn.Module):
         key   = key.view(key.shape[0], key.shape[1], self.h, self.d_k).transpose(1,2)
         value = value.view(value.shape[0], value.shape[1], self.h, self.d_k).transpose(1,2)
 
-        x , self.attention_scores  = MultiHeadAttentionBlock.attention(query,key,value,mask,self.dropout)
+        x , self.attention_scores  = MultiHeadAttentionBlock.attention(query, key, value, mask, self.dropout)
 
         x = x.transpose(1,2).contiguous().view(x.shape[0], -1, self.h*self.d_k)
 
         return self.W_o(x)
 
-
+# --------------------------------------------------------
+# RESIDUAL (pre-norm)
+# --------------------------------------------------------
 class ResidualConnection(nn.Module):
     """Residual connection with layer normalization and dropout.
 
@@ -219,7 +243,7 @@ class ResidualConnection(nn.Module):
     output back to the original input with dropout for regularization.
 
     Args:
-        features (int): Size of the last dimension to normalize.
+        d_model (int): Size of the last dimension to normalize.
         dropout (float): Dropout probability applied to the sublayer output.
 
     Methods:
@@ -233,15 +257,17 @@ class ResidualConnection(nn.Module):
             Returns:
                 torch.Tensor: Output tensor of shape (batch_size, seq_len, d_model).
     """
-    def __init__(self, features, dropout):
+    def __init__(self, d_model, dropout):
         super().__init__()
+        self.norm = LayerNormalization(d_model)
         self.dropout = nn.Dropout(dropout)
-        self.norm    = LayerNormalization(features)
 
     def forward(self, x, sublayer):
         return x + self.dropout(sublayer(self.norm(x)))
 
-
+# --------------------------------------------------------
+# ENCODER
+# --------------------------------------------------------
 class EncoderBlock(nn.Module):
     """Transformer encoder block with self-attention and feedforward layers.
 
@@ -265,11 +291,11 @@ class EncoderBlock(nn.Module):
             Returns:
                 torch.Tensor: Output tensor of shape (batch_size, seq_len, d_model).
     """
-    def __init__(self, features, self_attention_block, feed_forward_block, dropout):
+    def __init__(self, d_model, self_attention_block, feed_forward_block, dropout):
         super().__init__()
         self.self_attention_block = self_attention_block
         self.feed_forward_block   = feed_forward_block
-        self.residual_connections = nn.ModuleList([ResidualConnection(features,dropout) for _ in range(2)])
+        self.residual_connections = nn.ModuleList([ResidualConnection(d_model,dropout) for _ in range(2)])
     def forward(self, x, src_mask):
         x = self.residual_connections[0](x, lambda x: self.self_attention_block(x, x, x, src_mask))
         x = self.residual_connections[1](x, self.feed_forward_block)
@@ -282,7 +308,7 @@ class Encoder(nn.Module):
     Applies a sequence of encoder layers to the input, followed by layer normalization.
 
     Args:
-        features (int): Size of the last dimension to normalize.
+        d_model (int): Size of the last dimension to normalize.
         layers (Callable): Function that returns a list or generator of encoder blocks.
 
     Methods:
@@ -296,17 +322,19 @@ class Encoder(nn.Module):
             Returns:
                 torch.Tensor: Output tensor of shape (batch_size, seq_len, d_model).
     """
-    def __init__(self, features, layers):
+    def __init__(self, d_model, layers):
         super().__init__()
         self.layers = layers      # ModuleList
-        self.norm   = LayerNormalization(features)
+        self.norm   = LayerNormalization(d_model)
 
     def forward(self, x, mask):
         for layer in self.layers:
             x = layer(x, mask)
         return self.norm(x)
 
-
+# --------------------------------------------------------
+# DECODER
+# --------------------------------------------------------
 class DecoderBlock(nn.Module):
     """Transformer decoder block with self-attention, cross-attention, and feedforward layers.
 
@@ -314,7 +342,7 @@ class DecoderBlock(nn.Module):
     network, each wrapped in a residual connection with layer normalization and dropout.
 
     Args:
-        features (int): Size of the last dimension to normalize.
+        d_model (int): Size of the last dimension to normalize.
         self_attention_block (nn.Module): Masked multi-head self-attention module.
         cross_attention_block (nn.Module): Cross-attention module over encoder output.
         feed_forward_block (nn.Module): Feedforward module.
@@ -333,12 +361,12 @@ class DecoderBlock(nn.Module):
             Returns:
                 torch.Tensor: Output tensor of shape (batch_size, tgt_seq_len, d_model).
     """
-    def __init__(self, features, self_attention_block, cross_attention_block, feed_forward_block, dropout):
+    def __init__(self, d_model, self_attention_block, cross_attention_block, feed_forward_block, dropout):
         super().__init__()
         self.self_attention_block  = self_attention_block
         self.cross_attention_block = cross_attention_block
         self.feed_forward_block    = feed_forward_block
-        self.residual_connections  = nn.ModuleList([ResidualConnection(features,dropout) for _ in range(3)])
+        self.residual_connections  = nn.ModuleList([ResidualConnection(d_model,dropout) for _ in range(3)])
     
     def forward(self, x, encoder_output, src_mask, tgt_mask):
         x = self.residual_connections[0](x, lambda x: self.self_attention_block(x, x, x, tgt_mask))
@@ -380,7 +408,9 @@ class Decoder(nn.Module):
             x = layer(x, encoder_output, src_mask, tgt_mask)
         return self.norm(x)
 
-
+# --------------------------------------------------------
+# PROJECTION LAYER
+# --------------------------------------------------------
 class ProjectionLayer(nn.Module):
     """Final output layer projecting model embeddings to vocabulary logits.
 
@@ -409,7 +439,9 @@ class ProjectionLayer(nn.Module):
         return x
         #return torch.log_softmax(x, dim = -1)
 
-
+# --------------------------------------------------------
+# FULL TRANSFORMER
+# --------------------------------------------------------
 class Transformer(nn.Module):
     """Full transformer model combining encoder, decoder, embeddings, and output projection.
 
@@ -481,7 +513,9 @@ class Transformer(nn.Module):
     def project(self, x):
         return self.projection_layer(x)
 
-
+# --------------------------------------------------------
+# FACTORY FUNCTION
+# --------------------------------------------------------
 def build_transformer(src_vocab_size, tgt_vocab_size, src_seq_len, tgt_seq_len, d_model = 512, Nx = 6, h = 8, dropout = 0.1, d_ff = 2048 ):
     """Builds a full transformer model with encoder, decoder, embeddings, and output projection.
 

@@ -1,7 +1,27 @@
+"""
+===============================================================================
+ Name        : dataset.py
+ Author(s)   :
+ Version     : 0.1
+ Description :
+
+    Data Loader script for bilingual translation tasks using tokenized parallel corpora.
+
+    Prepares source(inputs) and target(labels) sequences with special tokens
+    (SOS, EOS, PAD), applies padding and truncation, and generates attention
+    masks including causal masks for decoder inputs.
+
+===============================================================================
+
+
+"""
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset
 
+# --------------------------------------------------------
+# BILINGUAL DATASET
+# --------------------------------------------------------
 class BilingualDataset(Dataset):
     """Custom dataset for bilingual translation tasks using tokenized parallel corpora.
 
@@ -60,16 +80,18 @@ class BilingualDataset(Dataset):
         src_text = pair["translation"][self.src_lang]
         tgt_text = pair["translation"][self.tgt_lang]
 
+        # Tokenize
         enc_tokens = self.tokenizer_src.encode(src_text).ids
         dec_tokens = self.tokenizer_tgt.encode(tgt_text).ids
 
-        enc_pad = self.seq_len - len(enc_tokens) - 2
-        dec_pad = self.seq_len - len(dec_tokens) - 1
+        # Calculate padding
+        enc_pad = self.seq_len - len(enc_tokens) - 2 # SOS + EOS
+        dec_pad = self.seq_len - len(dec_tokens) - 1 # SOS only
 
         if enc_pad < 0 or dec_pad < 0:
-            raise ValueError("Sentence too long")
+            raise ValueError("Sentence too long for configured seq_len.")
 
-        # Encoder input: [SOS] src [EOS] PAD*
+        # ENCODER INPUT: [SOS] src [EOS] PAD*
         encoder_input = torch.cat([
             torch.tensor([self.sos_id], dtype=torch.int64),
             torch.tensor(enc_tokens, dtype=torch.int64),
@@ -77,41 +99,57 @@ class BilingualDataset(Dataset):
             torch.full((enc_pad,), self.pad_id, dtype=torch.int64)
         ])
 
-        # Decoder input: [SOS] tgt PAD*
+        # DECODER INPUT: [SOS] tgt PAD*
         decoder_input = torch.cat([
             torch.tensor([self.sos_id], dtype=torch.int64),
             torch.tensor(dec_tokens, dtype=torch.int64),
             torch.full((dec_pad,), self.pad_id, dtype=torch.int64)
         ])
 
-        # Label: tgt [EOS] PAD*
+        # LABELS: tgt [EOS] PAD*
         label = torch.cat([
             torch.tensor(dec_tokens, dtype=torch.int64),
             torch.tensor([self.eos_id], dtype=torch.int64),
             torch.full((dec_pad,), self.pad_id, dtype=torch.int64)
         ])
 
+        # Verify lengths
         assert encoder_input.size(0) == self.seq_len
         assert decoder_input.size(0) == self.seq_len
         assert label.size(0) == self.seq_len
 
-        encoder_mask = (encoder_input != self.pad_id).unsqueeze(0).unsqueeze(0).int()
-        decoder_mask = (
-            (decoder_input != self.pad_id).unsqueeze(0).unsqueeze(0)
-            & causal_mask(self.seq_len)
-        )
+        # MASKS
+        encoder_mask = (encoder_input != self.pad_id).unsqueeze(0).unsqueeze(0)
+        dec_pad_mask = (decoder_input != self.pad_id).unsqueeze(0).unsqueeze(0)
+        dec_causal_mask = causal_mask(self.seq_len)
+        decoder_mask = dec_pad_mask & dec_causal_mask
 
         return {
             "encoder_input": encoder_input,
             "decoder_input": decoder_input,
-            "encoder_mask": encoder_mask,
-            "decoder_mask": decoder_mask,
+            "encoder_mask": encoder_mask,   # (1, 1, seq)
+            "decoder_mask": decoder_mask,   # (1, 1, seq, seq)
             "label": label,
             "src_text": src_text,
             "tgt_text": tgt_text,
         }
 
+# --------------------------------------------------------
+# CAUSAL MASK
+# --------------------------------------------------------
+def causal_mask(size):
+    """Generates a causal (look-ahead) mask for decoder self-attention.
 
-def causal_mask(seq_len):
-    mask = torch.triu(torch.ones((1, seq_len, seq_len)), diagonal=1).type(torch.int)
-    return mask == 0
+    Prevents attention to future tokens by masking out upper-triangular elements
+    above the main diagonal in a square attention matrix.
+
+    Args:
+        size (int): Sequence length (used for both query and key dimensions).
+
+    Returns:
+        torch.Tensor: Boolean mask of shape (1, size, size), where True allows attention
+        and False blocks it.
+    """
+    # (1, size, size)
+    mask = torch.triu(torch.ones((1, size, size), dtype=torch.bool), diagonal=1)
+    return ~mask  # True where allowed, False where future tokens blocked
