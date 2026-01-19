@@ -1,7 +1,7 @@
 # Transformer
 
 This repository provides an introductory exploration of the **Transformer architecture** and an implementation attempt of the well-known **self-attention algorithm**.  
-It is inspired by the paper [Attention Is All You Need](https://arxiv.org/abs/1706.03762).
+It is inspired by the paper [Attention Is All You Need](https://arxiv.org/abs/1706.03762) and the [video](https://www.youtube.com/watch?v=ISNdQcPhsts).
 
 As a practical example, we demonstrate how to build a translation model capable of converting text from English to Spanish using the Open Access Books Dataset.
 
