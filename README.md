@@ -7,40 +7,31 @@ As a practical example, we demonstrate how to build a translation model capable 
 
 ---
 
-## 📖 Overview
-Transformers have revolutionized natural language processing and machine learning by replacing recurrent and convolutional structures with **attention mechanisms**.  
-This project aims to:
-- Explain the core ideas behind self-attention.
-- Provide a minimal, educational implementation.
-- Serve as a starting point for learners interested in modern deep learning architectures.
-
----
-
 ## 🛠 Features
-- Step‑by‑step introduction to the Transformer model.
+- Step-by-step introduction to the Transformer model.
 - Implementation of **scaled dot‑product attention**.
 - Clear, commented code for educational use.
-- Example translation pipeline (English → Spanish).
-- References to the original paper for deeper study.
+- Example translation pipeline (English -> Spanish).
+- References to the original paper.
 
 ---
 
 ## 📚 Dataset
 
-We use the Opus Books English↔Spanish (EN↔ES) dataset for training and evaluation. This parallel corpus is drawn from open-access literary texts and is well-suited for translation tasks.
+We use the Opus Books English<->Spanish (EN<->ES) dataset for training and evaluation. This parallel corpus is drawn from open-access literary texts and is well-suited for translation tasks.
 
 Key features include:
-- Sentence pairs extracted from public domain books
-- Clean and aligned bilingual data
-- Open access via HuggingFace
-- Loads in one line with language pair flexibilit
+- Sentence pairs extracted from public domain books.
+- Clean and aligned bilingual data.
+- Open access via HuggingFace.
+- Loads in one line with language pair flexibilit.
 
 ---
 
 ## 🚀 Getting Started
 
 - A Dockerfile is included to simplify environment setup.
-- Clone the repository, build the Docker image, and start experimenting with the provided notebooks and scripts.
+- Clone the repository, build the Docker image, and start experimenting with the provided scripts.
 
 
 ---
